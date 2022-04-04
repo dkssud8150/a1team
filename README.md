@@ -1,4 +1,12 @@
+<div align="center">
+   
+![header](https://capsule-render.vercel.app/api?type=waving&color=gradient&height=120&animation=fadeIn&section=footer&text=🚗🚘🚛&fontAlign=70)
+   
 # devcorse a1_team 이치현 / 윤재호
+
+</div>
+
+<br>
 
 hough변환을 사용하여 라인을 검출하였다. 그 결과를 통해 pid제어를 추가했다. pid제어 값을 조정하고 있는 중이다.
 
