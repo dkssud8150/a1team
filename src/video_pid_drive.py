@@ -215,19 +215,19 @@ def start():
         center = (lpos + rpos)/2
         error = (center - Width/2)
         
-        print "----------------\nlpos : {}, rpos : {}\nerror : {}".format(lpos, rpos,error), "\n----------------"
+        print "----------------\nlpos : {}, rpos : {}\nerror : {}".format(lpos, rpos, error), "\n----------------"
 
         if abs(error) > 15:
-            speed = 8
+            speed = 5
         else:
             speed = 10
 
         lane_width = (rpos + lpos)/2
 
         if lpos < 0:
-            lpos = 0
+            lpos = -error
         if rpos > 640:
-            rpos = 640
+            rpos = 640 + error
 
 
 
