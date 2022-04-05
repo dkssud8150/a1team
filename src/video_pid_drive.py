@@ -20,21 +20,24 @@ class PID():
     self.p_error = 0.0
     self.i_error = 0.0
     self.d_error = 0.0
+    self.past_angle = 0
 
   def pid_control(self, cte):
     self.d_error = cte-self.p_error
     self.p_error = cte
     self.i_error += cte
-
-    return self.kp*self.p_error + self.ki*self.i_error + self.kd*self.d_error
+    self.past_angle = self.angle
+    self.angle =  self.kp*self.p_error + self.ki*self.i_error + self.kd*self.d_error
+    
+    return self.past_angle, self.angle
 
 image = np.empty(shape=[0])
 
 Width = 640
 Height = 480
-Offset = 420
+Offset = 390
 Gap = 40
-speed = 10
+speed = 50
 lane_width = 300
     
 
@@ -63,6 +66,9 @@ def draw_rectangle(img, lpos, rpos, offset=0):
     cv2.rectangle(img, (315, 15 + offset),
                        (325, 25 + offset),
                        (0, 0, 255), 2)
+    cv2.rectangle(img, (0,offset),
+			(Width,offset+Gap),
+			(0,0,0), 3)
     return img
 
 # left lines, right lines
@@ -173,7 +179,7 @@ def process_image(frame):
 
     # HoughLinesP
     roi = edge_img[Offset : Offset+Gap, 0 : Width]
-    all_lines = cv2.HoughLinesP(roi,1,math.pi/180,30,30,10)
+    all_lines = cv2.HoughLinesP(roi,1,math.pi/180,20,30,10)
 
     # divide left, right lines
     if all_lines is None:
@@ -212,34 +218,37 @@ def start():
         if not ok : break
 
         lpos, rpos = process_image(frame)
+ 
+        pid = PID(p, i, d) # p i d
         center = (lpos + rpos)/2
         error = (center - Width/2)
-        
+        past_angle, angle = pid.pid_control(error)        	
+	
+        if lpos == 0 and rpos < 640:
+            e = rpos - Width/2
+            lpos -= e
+
+        elif lpos > 0 and rpos == 640:
+            e = Width/2 - lpos
+            rpos += e
+
+        elif lpos == 0 and rpos == 640:
+      	    angle = past_angle
+            print past_angle, angle
+
+        else:
+             pass
+          
         print "----------------\nlpos : {}, rpos : {}\nerror : {}".format(lpos, rpos, error), "\n----------------"
 
-        if abs(error) > 15:
-            speed = 5
-        else:
-            speed = 10
-
-        lane_width = (rpos + lpos)/2
-
-        if lpos < 0:
-            lpos = -error
-        if rpos > 640:
-            rpos = 640 + error
-
-
-
-        pid = PID(0.45,0.0004,0.15)
-        angle = pid.pid_control(error)
 
 #        pid = PID(0.45,0.0005,0.05)
 #        speed = pid.pid_control(error)
-
+        
         print "angle : ", angle, "\nspeed : ", speed
-
-        if cv2.waitKey(10) == 27: break
+        drive(angle, speed)
+      
+        if cv2.waitKey(1) == 27: break
 
     rospy.spin()
 
