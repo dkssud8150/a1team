@@ -37,9 +37,32 @@ Width = 640
 Height = 480
 Offset = 390
 Gap = 40
-speed = 50
+speed = 5
 lane_width = 300
+
+''' ㅡㅡㅡㅡㅡㅡㅡㅡㅡmoving average filterㅡㅡㅡㅡㅡㅡㅡㅡㅡㅡㅡ  '''
+# 이동평균 필터 상수
+k = 0                               # k번째 수 의미
+preAvg = 0                          # 이전의 평균 값
+N = 10                             # 슬라이딩 윈도우 크기
+c_buf = np.zeros(N + 1)             # 슬라이딩 윈도우
+
+# 이동 평균 필터
+def movAvgFilter(pos):
+    global k, preAvg, buf, N
+    if k == 0:
+        buf = pos*np.ones(N + 1)
+        k, preAvg = 1, pos
+        
+    for i in range(0, N):
+        buf[i] = buf[i + 1]
     
+    buf[N] = pos
+    avg = preAvg + (pos - buf[0]) / N
+    preAvg = avg
+    return int(round(avg))
+
+''' ㅡㅡㅡㅡㅡㅡㅡㅡㅡㅡㅡㅡㅡㅡㅡㅡㅡㅡㅡㅡㅡㅡㅡㅡㅡ '''
 
 # draw lines
 def draw_lines(img, lines):
@@ -224,6 +247,8 @@ def start():
         error = (center - Width/2)
         past_angle, angle = pid.pid_control(error)        	
 	
+	# lpos, rpos = movAvgFilter(lpos), movAvgFilter(rpos)
+	
         if lpos == 0 and rpos < 640:
             e = rpos - Width/2
             lpos -= e
@@ -244,6 +269,8 @@ def start():
 
 #        pid = PID(0.45,0.0005,0.05)
 #        speed = pid.pid_control(error)
+
+	angle = movAvgFilter(angle)
         
         print "angle : ", angle, "\nspeed : ", speed
         drive(angle, speed)
