@@ -182,6 +182,10 @@ def get_line_pos(img, lines, left=False, right=False):
 def process_image(frame):
     global Width
     global Offset, Gap
+    rows, cols = frame.shape[0], frame.shape[1]
+    
+    ''' 크기 줄여서 연산 후 키워서 연산하면 연산속도 상승 여부 --> 너무 많이 깨짐'''
+#    frame = cv2.resize(frame,(int(cols*0.2),int(rows*0.2)),interpolation=cv2.INTER_AREA)
 
     # gray
     gray = cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
@@ -194,7 +198,9 @@ def process_image(frame):
     low_threshold = 60
     high_threshold = 70
     edge_img = cv2.Canny(np.uint8(blur_gray), low_threshold, high_threshold)
-
+    
+#    edge_img = cv2.resize(edge_img,(int(frame.shape[1]*5),int(frame.shape[0]*2)),interpolation=cv2.INTER_LINEAR)
+    cv2.imshow("edge_img", edge_img)
     # HoughLinesP
     roi = edge_img[Offset : Offset+Gap, 0 : Width]
     all_lines = cv2.HoughLinesP(roi,1,math.pi/180,20,30,10)
@@ -229,7 +235,7 @@ def start():
     global Width, Height
     global speed, lane_width
 
-    video = ["./video/xycar_track1.mp4","./video/road_video1.mp4","./video/road_video2.mp4"]
+    video = ["./src/video/xycar_track1.mp4","./src/video/road_video1.mp4","./src/video/road_video2.mp4","./src/video/track.avi"]
 
     cap = cv2.VideoCapture(video[0])
 
