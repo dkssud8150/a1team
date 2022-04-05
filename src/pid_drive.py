@@ -26,23 +26,30 @@ class PID():
     self.p_error = 0.0
     self.i_error = 0.0
     self.d_error = 0.0
+    self.angle = 0
+    self.past_angle = 0
 
   def pid_control(self, cte):
     self.d_error = cte-self.p_error
     self.p_error = cte
     self.i_error += cte
-
-    return self.kp*self.p_error + self.ki*self.i_error + self.kd*self.d_error
+    self.past_angle = self.angle
+    self.angle =  self.kp*self.p_error + self.ki*self.i_error + self.kd*self.d_error
+    
+    return self.past_angle, self.angle
 
 image = np.empty(shape=[0])
 bridge = CvBridge()
 pub = None
 Width = 640
 Height = 480
-Offset = 340
+Offset = 380
 Gap = 40
-speed = 30
+speed = 5
 lane_width = 300
+p = 0.7
+i = 0
+d = 0.1
 
 def img_callback(data):
     global image    
@@ -83,6 +90,10 @@ def draw_rectangle(img, lpos, rpos, offset=0):
     cv2.rectangle(img, (315, 15 + offset),
                        (325, 25 + offset),
                        (0, 0, 255), 2)
+    cv2.rectangle(img, (0,offset),
+			(Width,offset+Gap),
+			(0,0,0), 3)
+
     return img
 
 # left lines, right lines
@@ -178,7 +189,7 @@ def get_line_pos(img, lines, left=False, right=False):
 def process_image(frame):
     global Width
     global Offset, Gap
-
+  
     # gray
     gray = cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
 
@@ -190,19 +201,22 @@ def process_image(frame):
     low_threshold = 60
     high_threshold = 70
     edge_img = cv2.Canny(np.uint8(blur_gray), low_threshold, high_threshold)
+    cv2.imshow("edge", edge_img)
 
     # HoughLinesP
     roi = edge_img[Offset : Offset+Gap, 0 : Width]
-    all_lines = cv2.HoughLinesP(roi,1,math.pi/180,30,30,10)
+    
+    all_lines = cv2.HoughLinesP(roi,1,math.pi/180,20,30,10)
 
     # divide left, right lines
     if all_lines is None:
         return 0, 640
     left_lines, right_lines = divide_left_right(all_lines)
-
+    
     # get center of lines
     frame, lpos = get_line_pos(frame, left_lines, left=True)
-    frame, rpos = get_line_pos(frame, right_lines, right=True)
+    frame, rpos = get_line_pos(frame, right_lines, right=True)	
+	
 
     # draw lines
     frame = draw_lines(frame, left_lines)
@@ -219,40 +233,74 @@ def process_image(frame):
 
     return lpos, rpos
 
+#def p_level(p_value):
+#    global p
+#    p = p_value / 10
+
+#def i_level(i_value):
+#    global i
+#    p = i_value / 1000
+
+#def d_level(d_value):
+#    global d
+#    d = d_value / 100
+
+#def s_level(s_value):
+#    global speed
+#    speed = s_value
+
 def start():
     global pub
     global image
     global cap
     global Width, Height
     global speed, lane_width
+    global p, i, d
 
     rospy.init_node('auto_drive')
-    pub = rospy.Publisher('xycar_motor', xycar_motor, queue_size=1)
+    pub = rospy.Publisher('xycar_motor', xycar_motor, queue_size=5)
 
     image_sub = rospy.Subscriber("/usb_cam/image_raw", Image, img_callback)
-    rospy.sleep(2)
 
     while True:
         while not image.size == (640*480*3): continue
 
-        lpos, rpos = process_image(image)
-        print "-------", lpos, rpos, "--------"
-        
-        if rpos - lpos > lane_width:
-            speed = 15
-        else:
-            speed = 30
+        lpos, rpos = process_image(image)   
 
-        lane_width = rpos - lpos
-
+	pid = PID(p, i, d) # p i d
         center = (lpos + rpos)/2
         error = (center - Width/2)
+        past_angle, angle = pid.pid_control(error)        	
+	
+	if lpos == 0 and rpos < 640:
+	    e = rpos - Width/2
+	    lpos -= e
 
-        pid = PID(0.45,0.0007,0.15)
-        angle = pid.pid_control(error)
+	elif lpos > 0 and rpos == 640:
+	    e = Width/2 - lpos
+	    rpos += e
 
-        pid = PID(0.45,0.0005,0.05)
-        speed = pid.pid_control(error)
+	elif lpos == 0 and rpos == 640:
+	    angle = past_angle
+            print past_angle, angle
+
+	else:
+	     pass
+ 
+
+	
+#        cv2.createTrackbar('s_level', 'calibration', speed, 10, s_level)
+#        cv2.createTrackbar('p_level','calibration', int(p*10), 10, p_level)
+#        cv2.createTrackbar('i_level','calibration', int(i*1000), 10, i_level)
+#        cv2.createTrackbar('d_level','calibration', int(d*100), 10, d_level)
+
+#	cv2.setTrackbarPos('s_level', 'calibration', 5)
+#	cv2.setTrackbarPos('p_level', 'calibration', 5)
+#	cv2.setTrackbarPos('i_level', 'calibration', 0)
+#	cv2.setTrackbarPos('d_level', 'calibration', 5)
+	
+
+#	angle = -max(angle, 25.0) if angle < 0 else -min(angle, 25.0)
 
         drive(angle,speed)
 
@@ -262,6 +310,3 @@ def start():
 
 if __name__ == '__main__':
     start()
-
-
- 
