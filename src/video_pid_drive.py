@@ -1,12 +1,5 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
-import rospy, rospkg
 import numpy as np
 import cv2, random, math
-from cv_bridge import CvBridge
-from xycar_motor.msg import xycar_motor
-from sensor_msgs.msg import Image
 
 import sys
 import os
@@ -20,6 +13,7 @@ class PID():
     self.p_error = 0.0
     self.i_error = 0.0
     self.d_error = 0.0
+    self.angle = 0
     self.past_angle = 0
 
   def pid_control(self, cte):
@@ -27,7 +21,7 @@ class PID():
     self.p_error = cte
     self.i_error += cte
     self.past_angle = self.angle
-    self.angle =  self.kp*self.p_error + self.ki*self.i_error + self.kd*self.d_error
+    self.angle = self.kp*self.p_error + self.ki*self.i_error + self.kd*self.d_error
     
     return self.past_angle, self.angle
 
@@ -39,8 +33,8 @@ Offset = 390
 Gap = 40
 speed = 5
 lane_width = 300
-
-''' ㅡㅡㅡㅡㅡㅡㅡㅡㅡmoving average filterㅡㅡㅡㅡㅡㅡㅡㅡㅡㅡㅡ  '''
+    
+''' ㅡㅡㅡㅡㅡㅡㅡㅡㅡ이동 평균 필터ㅡㅡㅡㅡㅡㅡㅡㅡㅡㅡㅡ  '''
 # 이동평균 필터 상수
 k = 0                               # k번째 수 의미
 preAvg = 0                          # 이전의 평균 값
@@ -75,7 +69,7 @@ def draw_lines(img, lines):
 
 # draw rectangle
 def draw_rectangle(img, lpos, rpos, offset=0):
-    center = (lpos + rpos) / 2
+    center = (lpos + rpos) // 2
 
     cv2.rectangle(img, (lpos - 5, 15 + offset),
                        (lpos + 5, 25 + offset),
@@ -83,21 +77,20 @@ def draw_rectangle(img, lpos, rpos, offset=0):
     cv2.rectangle(img, (rpos - 5, 15 + offset),
                        (rpos + 5, 25 + offset),
                        (0, 255, 0), 2)
-    cv2.rectangle(img, (center-5, 15 + offset),
-                       (center+5, 25 + offset),
-                       (0, 255, 0), 2)    
+    cv2.rectangle(img, (center - 5, 15 + offset),
+                       (center + 5, 25 + offset),
+                       (0, 255, 0), 2)
     cv2.rectangle(img, (315, 15 + offset),
                        (325, 25 + offset),
                        (0, 0, 255), 2)
     cv2.rectangle(img, (0,offset),
-			(Width,offset+Gap),
-			(0,0,0), 3)
+                       (Width,offset+Gap),
+			                 (0,0,0), 3)
     return img
 
 # left lines, right lines
 def divide_left_right(lines):
     global Width
-
     low_slope_threshold = 0
     high_slope_threshold = 10
 
@@ -133,6 +126,8 @@ def divide_left_right(lines):
             right_lines.append([Line.tolist()])
 
     return left_lines, right_lines
+
+
 
 # get average m, b of lines
 def get_line_params(lines):
@@ -179,7 +174,7 @@ def get_line_pos(img, lines, left=False, right=False):
         x1 = (Height - b) / float(m)
         x2 = ((Height/2) - b) / float(m)
 
-        cv2.line(img, (int(x1), Height), (int(x2), (Height/2)), (255, 0,0), 3)
+        cv2.line(img, (int(x1), Height), (int(x2), (Height//2)), (255, 0,0), 3)
 
     return img, int(pos)
 
@@ -224,7 +219,7 @@ def process_image(frame):
     #roi2 = draw_rectangle(roi2, lpos, rpos)
 
     # show image
-    cv2.imshow('calibration', frame)
+    #cv2.imshow('calibration', frame)
 
     return lpos, rpos
 
@@ -234,7 +229,9 @@ def start():
     global Width, Height
     global speed, lane_width
 
-    cap = cv2.VideoCapture("../../line_drive/src/xycar_track1.mp4")
+    video = ["./video/xycar_track1.mp4","./video/road_video1.mp4","./video/road_video2.mp4"]
+
+    cap = cv2.VideoCapture(video[0])
 
     while True:
         ok,frame = cap.read()
@@ -242,45 +239,42 @@ def start():
 
         lpos, rpos = process_image(frame)
  
-        pid = PID(p, i, d) # p i d
+        pid = PID(0.1, 0.0001, 0.07) # p i d
         center = (lpos + rpos)/2
         error = (center - Width/2)
-        past_angle, angle = pid.pid_control(error)        	
-	
-	# lpos, rpos = movAvgFilter(lpos), movAvgFilter(rpos)
-	
+        past_angle, angle = pid.pid_control(error)
+
+        # filter 적용
+        # lpos, rpos = movAvgFilter(lpos), movAvgFilter(rpos)
+    
         if lpos == 0 and rpos < 640:
-            e = rpos - Width/2
-            lpos -= e
+          e = rpos - Width/2
+          lpos -= e
 
         elif lpos > 0 and rpos == 640:
-            e = Width/2 - lpos
-            rpos += e
+          e = Width/2 - lpos
+          rpos += e
 
         elif lpos == 0 and rpos == 640:
-      	    angle = past_angle
-            print past_angle, angle
+          angle = past_angle
+          print(past_angle, angle)
 
         else:
-             pass
-          
-        print "----------------\nlpos : {}, rpos : {}\nerror : {}".format(lpos, rpos, error), "\n----------------"
+          pass
+
+        print("--------------\n",past_angle, angle,"\n------------") 
+        #print("----------------\nlpos : {}, rpos : {}\nerror : {}".format(lpos, rpos, error), "\n----------------")
 
 
 #        pid = PID(0.45,0.0005,0.05)
 #        speed = pid.pid_control(error)
 
-	angle = movAvgFilter(angle)
+        angle = movAvgFilter(angle)
+        print("angle : ", angle, "\nspeed : ", speed)
         
-        print "angle : ", angle, "\nspeed : ", speed
-        drive(angle, speed)
-      
-        if cv2.waitKey(1) == 27: break
+        cv2.imshow("frame",frame)
 
-    rospy.spin()
+        if cv2.waitKey(10) == 27: break
 
 if __name__ == '__main__':
     start()
-
-
- 
