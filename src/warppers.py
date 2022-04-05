@@ -1,5 +1,4 @@
 from glob import glob
-from time import sleep
 import cv2
 import numpy as np
 
@@ -51,9 +50,6 @@ def start(img):
         elif cv2.waitKey(wtky) == ord('s'): wtky = wtky * 2
         elif cv2.waitKey(wtky) == ord('w'): wtky = wtky // 2
 
-
-
-#    pnt1 = np.float32(,[])
     
 if __name__ == "__main__":
     img_fd = glob("./src/video/*")
