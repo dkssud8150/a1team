@@ -2,31 +2,26 @@
 # -*- coding: utf-8 -*-
 
 from glob import glob
-import os
+import os,sys
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 
+import rospy, rospkg
+from cv_bridge import CvBridge
+from xycar_motor.msg import xycar_motor
+from sensor_msgs.msg import Image
+import signal
+
 import torch
-import torchvision
-from torchvision import models, datasets, transforms
 import torchvision.transforms as T
 
 
-COCO_INSTANCE_CATEGORY_NAMES = []
+def signal_handler(sig, frame):
+    os.system('killall -9 python rosout')
+    sys.exit(0)
 
-import matplotlib.pyplot as plt
-
-def model_train(epoch = 10):
-    
-    model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
-
-    os.makedirs("./weight",exist_ok=True)
-
-    torch.save(model, "./weight/fasterrcnn_model.pt")
-    # dummy_input = torch.randn(1, 3, 224, 224,dtype=torch.float32)
-    # torch.onnx.export(model, dummy_input, "./weight/model.onnx",export_params=True)
-
+signal.signal(signal.SIGINT, signal_handler)
 
 
 def get_prediction(img, threshold=0.5):
@@ -77,7 +72,9 @@ def object_detection_plt(img, threshold=0.5, rect_th=3, text_size=3, text_th=3):
     plt.imshow(img)
     plt.show()
 
-
+frame = np.empty(shape=[0])
+bridge = CvBridge()
+pub = None
 width = 640
 height = 480
 
@@ -90,6 +87,8 @@ nwindows = 9
 margin = 12
 minpixel = 5
 lane_bin_th = 145
+
+speed = 0
 
 pnt1 = np.int32([[250,320],[410,320],[width-60, height-60],[60, height-60]])
 pnt2 = np.int32([[0,0],[w-1,0],[w-1,h-1],[0,h-1]])
@@ -117,6 +116,19 @@ def calibrate_image(frame):
     return cv2.resize(tf_image, (width, height))
 '''
 
+def img_callback(data):
+    global image    
+    image = bridge.imgmsg_to_cv2(data, "bgr8")
+
+# publish xycar_motor msg
+def drive(Angle, Speed): 
+    global pub
+
+    msg = xycar_motor()
+    msg.angle = Angle
+    msg.speed = Speed
+
+    pub.publish(msg)
 
 
 def warp_image(img, src, dst, size):
@@ -214,18 +226,25 @@ def draw_lane(image, warp_img, m_to_src, left_fit, right_fit):
     color_warp = cv2.fillPoly(color_warp, np.int_([pts]), (0, 255, 0))
     newwarp = cv2.warpPerspective(color_warp, m_to_src, (width, height))
 
+    cv2.circle(image, left_fitx,3,(0,255,255),2)
+    cv2.circle(image, right_fitx,3,(0,255,255),2)
+
     return cv2.addWeighted(image, 1, newwarp, 0.3, 0)
 
 
-def video_start(img):
+def start():
+    global pub
+    global frame
+    global width, height
+    global speed
+    
+    rospy.init_node('auto_drive')
+    pub = rospy.Publisher('xycar_motor', xycar_motor, queue_size=1)
 
-    cap = cv2.VideoCapture(img)
+    image_sub = rospy.Subscriber("/usb_cam/image_raw", Image, img_callback)
 
     while True:
-        ok, frame = cap.read()
-        if not ok : break
-
-        rows, cols = frame.shape[0], frame.shape[1]
+        while not frame.size == (640*480*3): continue
 
         # boxes, pred_cls = get_prediction(frame)
         # ''' object mask '''
@@ -239,10 +258,15 @@ def video_start(img):
         lane_img = draw_lane(image, warp_img, m_to_src, left_fit, right_fit)
 
         cv2.imshow("frame",frame)
-#        cv2.imshow("dst",dst)
+
+        center = (left_fit + right_fit) / 2
+        error = center - width / 2
+
+        drive(error,speed)
         
-        if cv2.waitKey(10) == 27: break
-        
+        if cv2.waitKey(1) == 27: break
+    
+    rospy.spin()
 
 
 
@@ -267,7 +291,6 @@ def img_start(img):
 
 
 if __name__ == "__main__":
-    for img in glob("./src/video/track1.avi"):
-        video_start(img)
+    start()
 #    for img in glob("./src/img/*.png"):
 #        img_start(img)

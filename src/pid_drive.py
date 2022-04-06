@@ -299,7 +299,6 @@ cv2.createTrackbar('Gap_level','trackbar', 40, 50, d_level)
 def start():
     global pub
     global image
-    global cap
     global Width, Height
     global speed, lane_width
     global p, i, d
