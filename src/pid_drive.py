@@ -286,21 +286,6 @@ def start():
 
 	else:
 	     pass
- 
-
-	
-#        cv2.createTrackbar('s_level', 'calibration', speed, 10, s_level)
-#        cv2.createTrackbar('p_level','calibration', int(p*10), 10, p_level)
-#        cv2.createTrackbar('i_level','calibration', int(i*1000), 10, i_level)
-#        cv2.createTrackbar('d_level','calibration', int(d*100), 10, d_level)
-
-#	cv2.setTrackbarPos('s_level', 'calibration', 5)
-#	cv2.setTrackbarPos('p_level', 'calibration', 5)
-#	cv2.setTrackbarPos('i_level', 'calibration', 0)
-#	cv2.setTrackbarPos('d_level', 'calibration', 5)
-	
-
-#	angle = -max(angle, 25.0) if angle < 0 else -min(angle, 25.0)
 
         drive(angle,speed)
 
