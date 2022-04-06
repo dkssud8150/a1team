@@ -26,30 +26,68 @@ class PID():
     self.p_error = 0.0
     self.i_error = 0.0
     self.d_error = 0.0
-    self.angle = 0
-    self.past_angle = 0
 
   def pid_control(self, cte):
     self.d_error = cte-self.p_error
     self.p_error = cte
     self.i_error += cte
-    self.past_angle = self.angle
     self.angle =  self.kp*self.p_error + self.ki*self.i_error + self.kd*self.d_error
     
-    return self.past_angle, self.angle
+    return self.angle
 
 image = np.empty(shape=[0])
 bridge = CvBridge()
 pub = None
 Width = 640
 Height = 480
-Offset = 380
+Offset = 390
 Gap = 40
-speed = 5
+speed = 0
 lane_width = 300
-p = 0.7
-i = 0
-d = 0.1
+past_error=0
+
+# 이동평균필터
+class MovingAverage():
+    def __init__(self,n):
+        self.samples = n
+        self.data = []
+        self.weights = list(range(1, n+1))
+
+    def add_sample(self, new_sample):
+        if len(self.data) < self.samples:
+            self.data.append(new_sample)
+        else:
+            self.data = self.data[1:] + [new_sample]
+    def get_mm(self):
+        return float(sum(self.data)) / len(self.data)
+
+    def get_wmm(self):
+        s=0
+        for i, x in enumerate(self.data):
+            s += x*self.weights[i]
+
+        return float(s) / sum(self.weights[:len(self.data)])
+
+# 이동평균 필터 상수
+k = 0                               # k번째 수 의미
+preAvg = 0                          # 이전의 평균 값
+N = 5                               # 슬라이딩 윈도우 크기
+c_buf = np.zeros(N + 1)             # 슬라이딩 윈도우
+
+# 이동 평균 필터
+def movAvgFilter(pos):
+    global k, preAvg, buf, N
+    if k == 0:
+        buf = pos*np.ones(N + 1)
+        k, preAvg = 1, pos
+        
+    for i in range(0, N):
+        buf[i] = buf[i + 1]
+    
+    buf[N] = pos
+    avg = preAvg + (pos - buf[0]) / N
+    preAvg = avg
+    return int(round(avg))
 
 def img_callback(data):
     global image    
@@ -198,15 +236,14 @@ def process_image(frame):
     blur_gray = cv2.GaussianBlur(gray,(kernel_size, kernel_size), 0)
 
     # canny edge
-    low_threshold = 60
-    high_threshold = 70
+    low_threshold = 100
+    high_threshold = 120
     edge_img = cv2.Canny(np.uint8(blur_gray), low_threshold, high_threshold)
-    cv2.imshow("edge", edge_img)
-
+    cv2.imshow("edge_img",edge_img)
     # HoughLinesP
     roi = edge_img[Offset : Offset+Gap, 0 : Width]
     
-    all_lines = cv2.HoughLinesP(roi,1,math.pi/180,20,30,10)
+    all_lines = cv2.HoughLinesP(roi,1,math.pi/180,30,30,10)
 
     # divide left, right lines
     if all_lines is None:
@@ -229,25 +266,35 @@ def process_image(frame):
     #roi2 = draw_rectangle(roi2, lpos, rpos)
 
     # show image
-    cv2.imshow('calibration', frame)
+#    cv2.imshow('calibration', frame)
 
     return lpos, rpos
 
-#def p_level(p_value):
-#    global p
-#    p = p_value / 10
+def s_level(s_value):
+    pass
 
-#def i_level(i_value):
-#    global i
-#    p = i_value / 1000
+def p_level(p_value):
+    pass
 
-#def d_level(d_value):
-#    global d
-#    d = d_value / 100
+def i_level(i_value):
+    pass
 
-#def s_level(s_value):
-#    global speed
-#    speed = s_value
+def d_level(d_value):
+    pass
+
+def Offset_level(o_value):
+    pass
+
+def Gap_level(g_value):
+    pass
+
+cv2.namedWindow("trackbar")
+cv2.createTrackbar('s_level','trackbar', 11, 20, s_level)
+cv2.createTrackbar('p_level','trackbar', 6, 10, p_level)
+cv2.createTrackbar('i_level','trackbar', 2, 100, i_level)
+cv2.createTrackbar('d_level','trackbar', 6, 10, d_level)
+cv2.createTrackbar('Offset_level','trackbar', 420, 420, d_level)
+cv2.createTrackbar('Gap_level','trackbar', 40, 50, d_level)
 
 def start():
     global pub
@@ -258,49 +305,61 @@ def start():
     global p, i, d
 
     rospy.init_node('auto_drive')
-    pub = rospy.Publisher('xycar_motor', xycar_motor, queue_size=5)
+    pub = rospy.Publisher('xycar_motor', xycar_motor, queue_size=1)
 
     image_sub = rospy.Subscriber("/usb_cam/image_raw", Image, img_callback)
+    
+   # mm1 = MovingAverage(10)
 
     while True:
         while not image.size == (640*480*3): continue
 
         lpos, rpos = process_image(image)   
-
-	pid = PID(p, i, d) # p i d
-        center = (lpos + rpos)/2
-        error = (center - Width/2)
-        past_angle, angle = pid.pid_control(error)        	
 	
-	if lpos == 0 and rpos < 640:
-	    e = rpos - Width/2
-	    lpos -= e
+        if (lpos == 0 and rpos < 640):
+            e = rpos - Width/2
+            lpos -= e
+            center = (lpos + rpos) / 2
+            error = center - Width / 2
+           # mm1.add_sample(error)
+           # error = mm1.get_wmm()
 
-	elif lpos > 0 and rpos == 640:
-	    e = Width/2 - lpos
-	    rpos += e
+        elif (lpos < 0 and rpos == 640):
+            e = Width/2 - lpos
+            rpos += e
+            center = (lpos + rpos) / 2
+            error = center - Width / 2
+           # mm1.add_sample(error)
+           # error = mm1.get_wmm()
 
-	elif lpos == 0 and rpos == 640:
-	    angle = past_angle
-            print past_angle, angle
+        elif (lpos == 0 and rpos == 640):
+            error = past_error
 
-	else:
-	     pass
- 
+        else:
+            center = (lpos + rpos) / 2
+            error = center - Width / 2
+           # mm1.add_sample(error)
+           # error = mm1.get_wmm()
 
-	
-#        cv2.createTrackbar('s_level', 'calibration', speed, 10, s_level)
-#        cv2.createTrackbar('p_level','calibration', int(p*10), 10, p_level)
-#        cv2.createTrackbar('i_level','calibration', int(i*1000), 10, i_level)
-#        cv2.createTrackbar('d_level','calibration', int(d*100), 10, d_level)
+        speed = cv2.getTrackbarPos('s_level','trackbar')
+        p = cv2.getTrackbarPos('p_level','trackbar') / float(10)
+        i = cv2.getTrackbarPos('i_level','trackbar') / float(10000)
+        d = cv2.getTrackbarPos('d_level','trackbar') / float(100)
+        Offset = cv2.getTrackbarPos('Offset_level','trackbar') 
+        Gap = cv2.getTrackbarPos('Gap_level', 'trackbar')
 
-#	cv2.setTrackbarPos('s_level', 'calibration', 5)
-#	cv2.setTrackbarPos('p_level', 'calibration', 5)
-#	cv2.setTrackbarPos('i_level', 'calibration', 0)
-#	cv2.setTrackbarPos('d_level', 'calibration', 5)
-	
+        past_error = error
+        pid = PID(p, i, d)
+        angle = pid.pid_control(error)
 
-#	angle = -max(angle, 25.0) if angle < 0 else -min(angle, 25.0)
+        print "--------"
+        print "p_value : {}".format(p)
+        print "i_value : {}".format(i)
+        print "d_value : {}".format(d)
+        #print "lpos : {}".format(lpos)
+        #print "rpos : {}".format(rpos)
+        #print "angle : {}".format(angle)
+        #print "--------" 
 
         drive(angle,speed)
 

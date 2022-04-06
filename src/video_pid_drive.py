@@ -29,10 +29,11 @@ image = np.empty(shape=[0])
 
 Width = 640
 Height = 480
-Offset = 390
+Offset = 410
 Gap = 40
-speed = 5
-lane_width = 300
+speed = 8
+past_error=0
+
     
 ''' ㅡㅡㅡㅡㅡㅡㅡㅡㅡ이동 평균 필터ㅡㅡㅡㅡㅡㅡㅡㅡㅡㅡㅡ  '''
 # 이동평균 필터 상수
@@ -183,9 +184,6 @@ def process_image(frame):
     global Width
     global Offset, Gap
     rows, cols = frame.shape[0], frame.shape[1]
-    
-    ''' 크기 줄여서 연산 후 키워서 연산하면 연산속도 상승 여부 --> 너무 많이 깨짐'''
-#    frame = cv2.resize(frame,(int(cols*0.2),int(rows*0.2)),interpolation=cv2.INTER_AREA)
 
     # gray
     gray = cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
@@ -198,9 +196,7 @@ def process_image(frame):
     low_threshold = 60
     high_threshold = 70
     edge_img = cv2.Canny(np.uint8(blur_gray), low_threshold, high_threshold)
-    
-#    edge_img = cv2.resize(edge_img,(int(frame.shape[1]*5),int(frame.shape[0]*2)),interpolation=cv2.INTER_LINEAR)
-    cv2.imshow("edge_img", edge_img)
+
     # HoughLinesP
     roi = edge_img[Offset : Offset+Gap, 0 : Width]
     all_lines = cv2.HoughLinesP(roi,1,math.pi/180,20,30,10)
@@ -235,7 +231,7 @@ def start():
     global Width, Height
     global speed, lane_width
 
-    video = ["./src/video/xycar_track1.mp4","./src/video/road_video1.mp4","./src/video/road_video2.mp4","./src/video/track.avi"]
+    video = ["./src/video/track1.avi","./src/video/road_video1.mp4","./src/video/road_video2.mp4","./src/video/track.avi"]
 
     cap = cv2.VideoCapture(video[0])
 
@@ -251,22 +247,9 @@ def start():
         past_angle, angle = pid.pid_control(error)
 
         # filter 적용
-        # lpos, rpos = movAvgFilter(lpos), movAvgFilter(rpos)
+        lpos, rpos = movAvgFilter(lpos), movAvgFilter(rpos)
     
-        if lpos == 0 and rpos < 640:
-          e = rpos - Width/2
-          lpos -= e
 
-        elif lpos > 0 and rpos == 640:
-          e = Width/2 - lpos
-          rpos += e
-
-        elif lpos == 0 and rpos == 640:
-          angle = past_angle
-          print(past_angle, angle)
-
-        else:
-          pass
 
         print("--------------\n",past_angle, angle,"\n------------") 
         #print("----------------\nlpos : {}, rpos : {}\nerror : {}".format(lpos, rpos, error), "\n----------------")
